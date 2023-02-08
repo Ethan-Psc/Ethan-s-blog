@@ -1,5 +1,5 @@
 import { useState, ReactNode } from 'react'
-import { Comments } from 'pliny/comments'
+// import { Comments } from 'pliny/comments'
 import { formatDate } from 'pliny/utils/formatDate'
 import { CoreContent } from 'pliny/utils/contentlayer'
 import type { Blog } from 'contentlayer/generated'
@@ -45,16 +45,16 @@ export default function PostLayout({ content, next, prev, children }: LayoutProp
           </header>
           <div className="grid-rows-[auto_1fr] divide-y divide-gray-200 pb-8 dark:divide-gray-700 xl:divide-y-0">
             <div className="divide-y divide-gray-200 dark:divide-gray-700 xl:col-span-3 xl:row-span-2 xl:pb-0">
-              <div className="prose dark:prose-dark max-w-none pt-10 pb-8">{children}</div>
+              <div className="prose max-w-none pt-10 pb-8 dark:prose-dark">{children}</div>
             </div>
-            {siteMetadata.comments && (
+            {/* {siteMetadata.comments && (
               <div className="pt-6 pb-6 text-center text-gray-700 dark:text-gray-300" id="comment">
                 {!loadComments && (
                   <button onClick={() => setLoadComments(true)}>Load Comments</button>
                 )}
                 {loadComments && <Comments commentsConfig={siteMetadata.comments} slug={slug} />}
               </div>
-            )}
+            )} */}
             <footer>
               <div className="flex flex-col text-sm font-medium sm:flex-row sm:justify-between sm:text-base">
                 {prev && (
