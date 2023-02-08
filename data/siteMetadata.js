@@ -4,7 +4,7 @@
 const siteMetadata = {
   title: 'Next.js Starter Blog',
   author: 'Tails Azimuth',
-  headerTitle: 'TailwindBlog',
+  headerTitle: 'Ethan`s blog',
   description: 'A blog created with Next.js and Tailwind.css',
   language: 'en-us',
   theme: 'system', // system, dark or light
@@ -13,8 +13,8 @@ const siteMetadata = {
   siteLogo: '/static/images/logo.png',
   image: '/static/images/avatar.png',
   socialBanner: '/static/images/twitter-card.png',
-  email: 'address@yoursite.com',
-  github: 'https://github.com',
+  email: '897795208@qq.com',
+  github: 'https://github.com/Ethan-Psc',
   twitter: 'https://twitter.com/Twitter',
   facebook: 'https://facebook.com',
   youtube: 'https://youtube.com',
