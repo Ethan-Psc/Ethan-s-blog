@@ -1,0 +1,135 @@
+---
+title: '🎇 进程间的通信方式'
+date: '2022-08-25'
+tags: ['OS']
+draft: false
+summary: '管道、消息队列、共享内存、信号量、信号、Socket'
+---
+
+### 管道
+
+匿名管道 `ls -al | grep prw-r--r—`
+
+命名管道`mkfifo myPipe`
+
+`echo “hello” > myPipe | cat < myPipe`
+
+怎么创建管道，管道的原理是什么？
+
+管道，其实就是内核中的一串缓存，从管道写入的数据缓存在内核中，读入的数据也是从内核中读取
+
+当我们使用`ls -al | grep prw-r--r—`，实际上，shell进程创建出两个子进程，`ls -al`和`grep prw-r--r—`
+
+总结：
+
+1.匿名管道，只适用于父子进程之间的通信，因为管道是匿名的，因此管道没有文件实体，只能fork父进程的文件描述符，来达到通信的目的
+
+2.命名管道，可以进行不相关的进程之间的通信，因为管道是命名的，只要进程知晓管道的文件描述符，就可以进行通信
+
+3.管道的通信效率低，因为管道的数据传输是单向的
+
+### 消息队列
+
+**消息队列是保存在内核的消息链表**
+
+A进程把消息放进消息队列，B进程想要访问信息时去消息队列拿即可，反之也是如此。这种进程通信的方式有**两种弊端**：
+
+1.**通信不及时**。在通信过程中，存在用户态切换到内核态的切换开销。当B进程想要访问消息队列的消息时，需要由用户态切换为内核态再把数据拷贝到用户态，反之写入消息时也是如此
+
+2.**消息队列的消息有大小限制**。在Linux的内核有两个宏定义分别是消息的最大长度与消息队列的最大长度
+
+### 共享内存
+
+每个进程都有属于自己的虚拟内存空间，即使是相同的虚拟内存地址，对应映射的真实地址是不相同的
+
+**共享内存的机制就是，拿出一块虚拟内存空间映射到同一块真实内存空间中**
+
+### 信号量
+
+由于共享内存存在写入冲突的可能，引入信号量的概念
+
+信号量是一个整型的计数器，用于**实现进程间的互斥与同步**，而不是用于缓存进程间通信的数据
+
+**信号量代表资源的数量**，有两种操作分别是**P操作和V操作用于控制信号量**，P操作会把信号量减一，V操作会把信号量加一
+
+当信号量初始化为1时，是互斥信号量；当信号量初始化为0时，是同步信号量（所谓同步就是必须先执行A进程，再执行B进程），请思考为什么？
+
+
+### 信号
+
+信号是进程通信机制中唯一异步通信的机制，因为可以在任何时刻发送信号，比如说ctrl+c就是向父进程发送终止运行的信号
+
+进程对信号有三种处理方式
+
+- 执行默认信号
+- 忽略信号
+- 执行信号回调函数 `process.on(’SIGINT’, shutdown)`
+
+### Socket
+
+**跨网络与不同主机进行进程间通信的机制为**
+
+实际上，Socket 通信不仅可以跨网络与不同主机的进程间通信，还可以在同主机上进程间通信。
+
+我们来看看创建 socket 的系统调用：
+
+`int socket(int domain, int type, int protocal)`
+
+三个参数分别代表：
+
+- domain 参数用来指定协议族，比如 AF_INET 用于 IPV4、AF_INET6 用于 IPV6、AF_LOCAL/AF_UNIX 用于本机；
+- type 参数用来指定通信特性，比如 SOCK_STREAM 表示的是字节流，对应 TCP、SOCK_DGRAM 表示的是数据报，对应 UDP、SOCK_RAW 表示的是原始套接字；
+- protocal 参数原本是用来指定通信协议的，但现在基本废弃。因为协议已经通过前面两个参数指定完成，protocol 目前一般写成 0 即可；
+
+根据创建 socket 类型的不同，通信的方式也就不同：
+
+- 实现 TCP 字节流通信： socket 类型是 AF_INET 和 SOCK_STREAM；
+- 实现 UDP 数据报通信：socket 类型是 AF_INET 和 SOCK_DGRAM；
+- 实现本地进程间通信： 「本地字节流 socket 」类型是 AF_LOCAL 和 SOCK_STREAM，「本地数据报 socket 」类型是 AF_LOCAL 和 SOCK_DGRAM。另外，AF_UNIX 和 AF_LOCAL 是等价的，所以 AF_UNIX 也属于本地 socket；
+
+接下来，简单说一下这三种通信的编程模式。
+
+> 针对 TCP 协议通信的 socket 编程模型
+> 
+
+![https://cdn.xiaolincoding.com/gh/xiaolincoder/ImageHost/%E6%93%8D%E4%BD%9C%E7%B3%BB%E7%BB%9F/%E8%BF%9B%E7%A8%8B%E9%97%B4%E9%80%9A%E4%BF%A1/12-TCP%E7%BC%96%E7%A8%8B%E6%A8%A1%E5%9E%8B.jpg](https://cdn.xiaolincoding.com/gh/xiaolincoder/ImageHost/%E6%93%8D%E4%BD%9C%E7%B3%BB%E7%BB%9F/%E8%BF%9B%E7%A8%8B%E9%97%B4%E9%80%9A%E4%BF%A1/12-TCP%E7%BC%96%E7%A8%8B%E6%A8%A1%E5%9E%8B.jpg)
+
+- 服务端和客户端初始化 `socket`，得到文件描述符；
+- 服务端调用 `bind`，将绑定在 IP 地址和端口;
+- 服务端调用 `listen`，进行监听；
+- 服务端调用 `accept`，等待客户端连接；
+- 客户端调用 `connect`，向服务器端的地址和端口发起连接请求；
+- 服务端 `accept` 返回用于传输的 `socket` 的文件描述符；
+- 客户端调用 `write` 写入数据；服务端调用 `read` 读取数据；
+- 客户端断开连接时，会调用 `close`，那么服务端 `read` 读取数据的时候，就会读取到了 `EOF`，待处理完数据后，服务端调用 `close`，表示连接关闭。
+
+这里需要注意的是，服务端调用 `accept` 时，连接成功了会返回一个已完成连接的 socket，后续用来传输数据。
+
+所以，监听的 socket 和真正用来传送数据的 socket，是「**两个**」 socket，一个叫作**监听 socket**，一个叫作**已完成连接 socket**。
+
+成功连接建立之后，双方开始通过 read 和 write 函数来读写数据，就像往一个文件流里面写东西一样。
+
+> 针对 UDP 协议通信的 socket 编程模型
+> 
+
+![https://cdn.xiaolincoding.com/gh/xiaolincoder/ImageHost/%E6%93%8D%E4%BD%9C%E7%B3%BB%E7%BB%9F/%E8%BF%9B%E7%A8%8B%E9%97%B4%E9%80%9A%E4%BF%A1/13-UDP%E7%BC%96%E7%A8%8B%E6%A8%A1%E5%9E%8B.jpg](https://cdn.xiaolincoding.com/gh/xiaolincoder/ImageHost/%E6%93%8D%E4%BD%9C%E7%B3%BB%E7%BB%9F/%E8%BF%9B%E7%A8%8B%E9%97%B4%E9%80%9A%E4%BF%A1/13-UDP%E7%BC%96%E7%A8%8B%E6%A8%A1%E5%9E%8B.jpg)
+
+UDP 是没有连接的，所以不需要三次握手，也就不需要像 TCP 调用 listen 和 connect，但是 UDP 的交互仍然需要 IP 地址和端口号，因此也需要 bind。
+
+对于 UDP 来说，不需要要维护连接，那么也就没有所谓的发送方和接收方，甚至都不存在客户端和服务端的概念，只要有一个 socket 多台机器就可以任意通信，因此每一个 UDP 的 socket 都需要 bind。
+
+另外，每次通信时，调用 sendto 和 recvfrom，都要传入目标主机的 IP 地址和端口。
+
+> 针对本地进程间通信的 socket 编程模型
+> 
+
+本地 socket 被用于在**同一台主机上进程间通信**的场景：
+
+- 本地 socket 的编程接口和 IPv4 、IPv6 套接字编程接口是一致的，可以支持「字节流」和「数据报」两种协议；
+- 本地 socket 的实现效率大大高于 IPv4 和 IPv6 的字节流、数据报 socket 实现；
+
+对于本地字节流 socket，其 socket 类型是 AF_LOCAL 和 SOCK_STREAM。
+
+对于本地数据报 socket，其 socket 类型是 AF_LOCAL 和 SOCK_DGRAM。
+
+本地字节流 socket 和 本地数据报 socket 在 bind 的时候，不像 TCP 和 UDP 要绑定 IP 地址和端口，而是**绑定一个本地文件**，这也就是它们之间的最大区别

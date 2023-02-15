@@ -1,0 +1,497 @@
+---
+title: '😄 TS全面进阶指南'
+date: '2023-02-14'
+tags: ['Typescript']
+draft: false
+summary: '类型编程'
+---
+
+### **使用 Callable Interface来描述一个函数的结构**
+
+```jsx
+// 描述一个函数的结构
+interface FuncFooStruct {
+  (name: string): number;
+}
+const printName: FuncFooStruct = function (name: string): number {
+  console.log(name);
+  return 1;
+};
+printName('tanyongjia');
+
+// 描述重载函数的的结构
+interface Overloaded {
+    (foo: string): string
+    (foo: number): number
+}
+
+// example implementation
+function stringOrNumber(foo: number): number;
+function stringOrNumber(foo: string): string;
+function stringOrNumber(foo: any): any {
+    if (typeof foo === 'number') {
+        return foo * foo;
+    } else if (typeof foo === 'string') {
+        return `hello ${foo}`;
+    }
+}
+
+const overloaded: Overloaded = stringOrNumber;
+
+// example usage
+const str = overloaded(''); // type of `str` is inferred as `string`
+const num = overloaded(123); // type of `num` is inferred as `number`
+```
+
+**使用 Newable Interface来描述一个类的结构**
+
+```tsx
+// 描述一个类的结构，也就是说如何使用interface描述一个带有constructor(name: string)的类
+interface ComesFromString {
+    name: string;
+}
+
+interface StringConstructable {
+    new(n: string): ComesFromString;
+}
+
+class MadeFromString implements ComesFromString {
+    constructor (public name: string) {
+        console.log('ctor invoked');
+    }
+}
+
+function makeObj(n: StringConstructable) {
+    return new n('hello!');
+}
+
+console.log(makeObj(MadeFromString).name);
+
+```
+
+This creates an actual constraint for what you can invoke `makeObj` with:
+
+```
+class Other implements ComesFromString {
+    constructor (public name: string, count: number) {
+    }
+}
+
+makeObj(Other); // Error! Other's constructor doesn't match StringConstructable
+```
+
+## 类型工具
+
+含义：对类型进行处理的工具
+
+分类：1. 由使用方式来分类：操作符；关键字；专用语法；
+
+1. 由使用目的分类：类型创建；类型安全保护；
+
+工具类型的主要意义：基于传入的泛型坑位进行各种类型的处理
+
+### **索引类型**
+
+含义：不是特定的一种类型工具，而是三种独立的类型工具组成：索引签名类型；索引类型查询；索引类型访问
+
+索引签名类型：通过接口或者类型别名中，快速声明一个键值类型一致的类型结构
+
+`interface IProps: {`
+
+`[key: string]: string`
+
+`}`
+
+索引类型查询：通过关键字keyof，将类型中的键转换为对应字面量类型，并组成联合类型
+
+`interface IProps: {`
+
+`key: string,`
+
+`123: string,`
+
+`}`
+
+`type Keys = keyof IProps` 
+
+`// 'key' || 123`
+
+索引类型访问：以IProps[’123’]类似的方式，通过键的字符串字面量访问相应键值的类型
+
+`interface IProps: {`
+
+`key: string,`
+
+`123: string,`
+
+`}`
+
+`type Keys = IProps['key']` 
+
+`// string`
+
+### **映射类型**
+
+含义：通过关键字in，基于键名映射到对应的键值类型上
+
+```fsharp
+type Stringify<T> = {
+  [K in keyof T]: string;
+};
+interface IProps {
+	name: string,
+	age: number
+}
+type IProps2 = Stringify<IProps>;
+// {name: string, age: string}
+
+type Clone<T> = {
+  [K in keyof T]: T[K];
+};
+// 映射类型、索引类型访问、索引类型查询
+```
+
+### **各种类型工具的含义与用处**
+
+| 类型工具 | 创建新类型的方式 | 常见搭配 |
+| --- | --- | --- |
+| 类型别名（Type Alias） | 将一组类型/类型结构封装，作为一个新的类型 | 联合类型、映射类型 |
+| 工具类型（Tool Type） | 在类型别名的基础上，基于泛型去动态创建新类型 | 基本所有类型工具 |
+| 联合类型（Union Type） | 创建一组类型集合，满足其中一个类型即满足这个联合类型（||） | 类型别名、工具类型 |
+| 交叉类型（Intersection Type） | 创建一组类型集合，满足其中所有类型才满足映射联合类型（&&） | 类型别名、工具类型 |
+| 索引签名类型（Index Signature Type） | 声明一个拥有任意属性，键值类型一致的接口结构 | 映射类型 |
+| 索引类型查询（Indexed Type Query） | 从一个接口结构，创建一个由其键名字符串字面量组成的联合类型 | 映射类型 |
+| 索引类型访问（Indexed Access Type） | 从一个接口结构，使用键名字符串字面量访问到对应的键值类型 | 类型别名、映射类型 |
+| 映射类型 （Mapping Type） | 从一个联合类型依次映射到其内部的每一个类型 | 工具类型 |
+
+以上的类型工具都有**类型创建**的作用，还有类型工具有**类型安全保护**的作用：**类型查询操作符**
+与**类型守卫**
+
+### **类型查询操作符**
+
+含义：在**类型标注**或者**类型工具**中使用关键字keyof可以用于类型查询
+
+`const str = ‘123’`
+
+`type Str = typeof str // 123`
+
+类型查询操作符后面不允许跟着操作符，是为了使得逻辑层与类型层分离，通过以最窄的推导程度（字面量类型）进行类型的查询
+
+### **类型守卫**
+
+类型控制流能力的不足体现在：
+
+```fsharp
+function isString(input: unknown): input is string {
+  return typeof input === "string";
+}
+
+function foo(input: string | number) {
+  if (isString(input)) {
+    // 类型“string | number”上不存在属性“replace”。
+    (input).replace("linbudu", "linbudu599")
+  }
+  if (typeof input === 'number') { }
+  // ...
+}
+```
+
+`isString`的提取是对逻辑判断的封装，是很常见的，但是这里会出现问题
+
+`isString`是对于`input`的类型推导，但是这里的`isString`是从原有的类型控制流中提取出来的，`Typescript`无法处理跨函数上下文的类型控制流，这里需要引入关键字**is**
+
+通过**is关键字 + 预期类型** 对**类型守卫`isString`函数（`isString`是类型守卫）**进行能力加强，使得它会被这个类型守卫调用方后续的类型控制流分析收集到
+
+### **基于`in`与`instanceof`的类型保护**
+
+```fsharp
+interface Foo {
+	tpp: '123',
+  foo: string;
+  fooOnly: boolean;
+  shared: number;
+}
+
+interface Bar {
+	tpp: '234',
+  bar: string;
+  barOnly: boolean;
+  shared: number;
+}
+
+function handle(input: Foo | Bar) {
+  if ('foo' in input) {
+    input.fooOnly;
+  } else {
+    input.barOnly;
+  }
+}
+
+function handle2(input: Foo | Bar) {
+  // 报错，并没有起到区分的作用，在两个代码块中都是 Foo | Bar
+  if (typeof input.diffType === 'string') {
+    input.fooOnly;
+  } else {
+    input.barOnly;
+  }
+}
+
+function handle1(input: Foo | Bar) {
+  // 成功，起到区分的作用，必须使用字面量才能区分
+  if (input.tpp === '123') {
+    input.fooOnly;
+  } else {
+    input.barOnly;
+  }
+}
+```
+
+`foo`属于`Foo`接口的可辨别属性，因为这个属性是`Bar`所不具有的，**利用关键字`in`对类型控制流进行处理**，在这里`if`条件为真时，`input`一定具有`fooOnly`属性
+
+对于相同属性不同属性类型的情况，不可以使用`typeof`进行区分，而是要在字面量的层面才能进行区分
+
+同样的，也可以**利用instanceof对类型控制流进行处理**
+
+```fsharp
+class FooBase {}
+
+class BarBase {}
+
+class Foo extends FooBase {
+  fooOnly() {}
+}
+class Bar extends BarBase {
+  barOnly() {}
+}
+
+function handle(input: Foo | Bar) {
+  if (input instanceof FooBase) {
+    input.fooOnly();
+  } else {
+    input.barOnly();
+  }
+}
+```
+
+### **类型断言守卫**
+
+断言守卫和类型守卫最大的不同点在于，在判断条件不通过时，断言守卫需要抛出一个错误，类型守卫只需要剔除掉预期的类型
+
+## 类型系统兼容性与层级
+
+### 结构化类型系统与标称类型系统
+
+`Typescript`属于结构化类型系统（也就是鸭子模型），如果一个对象会叫、会爬，具有鸭子的一切特征，那么在语言层面看来，它就是鸭子（类型的兼容性判断）。两种类型系统的区别就是一个是基于类型结构进行兼容性比较，一个是基于类型名字进行兼容性比较
+
+**结构是为了限制数据的可用操作与实际意义**，在一些项目中，需要对`Typescript`类型系统**模拟为标称类型系统**，主要的思路是添加类型信息（类似于元信息），方法是使用逻辑与类型结构
+
+```fsharp
+const nums1: renminbi = 100;
+const nums2: meiyuan = 100;
+function add(nums1: renminbi, nums2: renminbi) {return nums1 + nums2;}
+// 上面这样会出错
+// 从类型结构上添加附加类型信息
+export declare class TagProtector<T extends string> {
+  protected __tag__: T;
+}
+export type Nominal<T, U extends string> = T & TagProtector<U>;
+
+export type CNY = Nominal<number, 'CNY'>;
+
+export type USD = Nominal<number, 'USD'>;
+
+const CNYCount = 100 as CNY;
+
+const USDCount = 100 as USD;
+
+function addCNY(source: CNY, input: CNY) {
+  return (source + input) as CNY;
+}
+
+addCNY(CNYCount, CNYCount);
+
+// 报错了！
+addCNY(CNYCount, USDCount);
+```
+
+### 函数类型的兼容性比较
+
+`type DogFatory = (arg: Dog) ⇒ Dog`
+
+参数必须是Dog的父类型或者Dog类型本身；返回值必须是Dog的子类型或者Dog类型本身
+
+逆变与协变
+
+在数学的角度上看，随着一个值的变化，另一个值发生一致的变化，称为协变；反之称为逆变
+
+在`Typescript`上看，如果`A<<B`（A是B的子类型），那么协变意味着`Wrapper<A> <<  Wrapper<B>`
+
+这里的`Wrapper`值的就是从单一类型到函数类型的包装
+
+```fsharp
+type AsFuncArgType<T> = (arg: T) => void;
+type AsFuncReturnType<T> = (arg: unknown) => T;
+
+// 1 成立：(T -> Corgi) ≼ (T -> Dog)
+type CheckReturnType = AsFuncReturnType<Corgi> extends AsFuncReturnType<Dog>
+  ? 1
+  : 2;
+
+// 2 不成立：(Dog -> T) ≼ (Animal -> T)
+type CheckArgType = AsFuncArgType<Dog> extends AsFuncArgType<Animal> ? 1 : 2;
+
+```
+
+**函数类型的参数类型使用子类型逆变的方式确定是否成立，返回值类型使用子类型协变的方式确定是否成立**
+
+**如果要判断函数类型的兼容性是否成立，那么参数类型必须是原参数类型的父类型或者原类型本身，返回值类型必须是原返回值类型的子类型或者原类型本身**
+
+在tsconfig.json中，默认的`strictFunctionTypes`为false，需要开启，也就是说默认是双变的，允许函数类型参数类型子类型协变，也允许函数类型返回值类型子类型逆变。这是因为在一些场景中
+
+`Dog << Animal` ,`push`函数中的函数签名为`(T) ⇒ void` ，那么是否意味着`(Dog) ⇒ void << (Animal) ⇒ void` 中`Dog`是不可以赋值给`Animal`，但是在这里明显不是的，因此有一些场景中函数类型的检查是双变的
+
+PS：
+
+在 `TypeScript` `ESLint` 中，有这么一条规则：[`method-signature-style`](https://link.juejin.cn/?target=https%3A%2F%2Fgithub.com%2Ftypescript-eslint%2Ftypescript-eslint%2Fblob%2Fmain%2Fpackages%2Feslint-plugin%2Fdocs%2Frules%2Fmethod-signature-style.md)，它的意图是约束在接口中声明方法时，需要使用 **`property`** 而非 **`method`** 形式：
+
+```
+// method 声明interface T1 {
+func(arg: string): number;
+}
+
+// property 声明interface T2 {
+  func: (arg: string) => number;
+}
+
+```
+
+进行如此约束的原因即，对于 `property` 声明，才能在开启严格函数类型检查的情况下享受到**基于逆变的参数类型检查**。
+
+```fsharp
+interface Array<T> {
+    push(...items: T[]): number;
+}
+```
+
+`Array`接口的方法使用`method`形式就能规避掉基于逆变的参数类型检查
+
+### 类型兼容性判断的两种方式
+
+- 赋值
+
+`let a: number = 100;`
+
+`let b: any;`
+
+`let c: never;`
+
+`b = a; // 说明number是any的子类型`
+
+`c = a; // 说明number不是never的子类型`
+
+- 类型
+
+`type Result<T, U> = T extends U ? true: false;`
+
+`type True = Result<string, any>;`
+
+`type False = Result<unknown, any>;`
+
+![Untitled](https://s3-us-west-2.amazonaws.com/secure.notion-static.com/771242cd-e0bd-40da-aedf-1b7f0cad38df/Untitled.png)
+
+## 条件类型与infer
+
+### 条件类型的分布式特性
+
+- 是否通过范型参数传递联合类型的参数
+- 范型参数是否被数组包裹了
+
+对联合类型的参数进行拆分，一个一个地进入条件类型判断中去
+
+```fsharp
+type Naked<T> = T extends boolean ? "Y" : "N";
+type Wrapped<T> = [T] extends [boolean] ? "Y" : "N";
+
+// "N" | "Y"
+// 通过范型参数传递联合类型的的参数，触发分布式特性
+type Res3 = Naked<number | boolean>;
+// 范型参数被数组包裹了，不会触发分布式特性
+// "N"
+type Res4 = Wrapped<number | boolean>;
+
+```
+
+## 类型编程进阶
+
+**属性修饰进阶**
+
+- 基于已知部分属性修饰
+- 深层（递归）属性修饰
+
+类型编程进阶原则：将复杂的工具类型转换为简单、基础的工具类型的组合
+
+1. MarkPropsAsOptional的作用是将一个对象的部分属性标注为可选，同样的可以将一个对象的部分属性标为必选、只读、不可修改、可修改、不为空。利用内置类型 **Required、Readonly、Mutable、Nullable、NonNullable等**
+
+```fsharp
+type Flatten<T extends object> = {[K in keyof T]: T[K]}
+type MarkPropsAsOptional
+<T extends object, 
+K extends keyof T = keyof T> =  
+Flatten<Partial<Pick<T, K>> & Omit<T, K>>
+
+type MarkPropsAsOptionalStruct = MarkPropsAsOptional<
+  {
+    foo: string;
+    bar: number;
+    baz: boolean;
+  },
+  'bar'
+>;
+```
+
+**结构工具类型进阶**
+
+- 基于键值类型的 Pick 与 Omit；
+- 子结构的互斥处理。
+
+1.`PickByValueType`作用是**基于期望的类型去拿到所有此类型的属性名。**
+
+也就是说可以拿到必选的属性名、只读的属性名等等
+
+2.`Without`作用是表示两个对象属性之间互斥，有你没我，有我没你
+
+```fsharp
+export type Without<T, U> = { [P in Exclude<keyof T, keyof U>]?: never };
+
+export type XOR<T, U> = (Without<T, U> & U) | (Without<U, T> & T);
+
+type XORUser = XOR<VIP, CommonUser>;
+
+expectType<XORUser>({
+  vipExpires: 0,
+});
+
+expectType<XORUser>({
+  promotionUsed: false,
+});
+
+// 报错，至少需要一个
+// @ts-expect-error
+expectType<XORUser>({
+});
+
+// 报错，不允许同时拥有
+// @ts-expect-error
+expectType<XORUser>({
+  promotionUsed: false,
+  vipExpires: 0,
+});
+```
+
+**集合工具类型进阶**
+
+从一维原始类型集合，扩展二维的对象类型，在对象类型之间进行交并补差集的运算，以及对同名属性的各种处理情况。
+
+**模式匹配工具类型进阶**
+
+深层嵌套

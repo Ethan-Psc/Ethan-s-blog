@@ -1,7 +1,7 @@
 // @ts-check
 
 const siteMetadata = {
-  title: 'Next.js Starter Blog',
+  title: 'Ethan`s Blog',
   author: 'Ethan',
   headerTitle: 'Ethan`s blog',
   description: 'A blog created with Next.js and Tailwind.css',

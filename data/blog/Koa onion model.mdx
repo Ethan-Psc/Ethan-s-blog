@@ -1,0 +1,170 @@
+---
+title: '🤔 深入浅出Koa洋葱模型'
+date: '2022-08-14'
+tags: ['Koa']
+draft: false
+summary: '每一层相当于一个中间件，用来进行特定的处理，如错误处理，Session处理等。处理顺序是next()前的请求（Request，从外层到内层），然后执行next函数，最后是next后的响应（Response，从内层到外层）
+'
+---
+
+
+
+## 什么是Koa洋葱模型？
+
+每一层相当于一个中间件，用来进行特定的处理，如错误处理，Session处理等。处理顺序是next()前的请求（Request，从外层到内层），然后执行next函数，最后是next后的响应（Response，从内层到外层）
+
+每一个中间件有两次处理的时机
+
+## 为什么使用Koa洋葱模型？
+
+如果一个中间件依赖于另一个中间件的逻辑
+
+比如说一个请求或操作db所花费的时间
+
+```jsx
+app.use(async (ctx, next) => {
+	const start = Date.now();
+	await next();
+	const end = Date.now();
+	console.log(`请求耗时${end-start}ms`);
+})
+app.use(async (ctx, next) => {
+	ctx.body = await axios.get('baidu.com') 
+})
+```
+
+## 洋葱模型的实现原理
+
+```jsx
+const Koa = require('koa');
+
+//Applications
+const app = new Koa();
+
+// 中间件1
+app.use((ctx, next) => {
+console.log(1);
+next();
+console.log(2);
+});
+
+// 中间件 2
+app.use((ctx, next) => {
+console.log(3);
+next();
+console.log(4);
+});
+
+app.listen(9000, '0.0.0.0', () => {
+console.log(`Server is starting`);
+});
+```
+
+以上面的代码为例子，深入解析use，listen方法
+
+```jsx
+// use方法
+// use方法相当简单，就是把fn放入this.middleware中间件函数列表
+// return this,是为了链式调用
+use(fn){
+	this.middleware.push(fn);
+	return this;
+}
+// listen方法
+// listen方法是对http模块createServer的封装，并且使用了koa-compose模块的重要方法compose
+listen(...argv) {
+	const server = http.createServer(this.callback());
+	return server.listen(...argv);
+}
+
+callback() {
+	// compose 是最重要一个方法，返回的是一个函数
+	const fn = compose(this.middleware);
+	// 创建一个ctx上下文环境
+	const handleRequest = (req, res) => {
+		const ctx = this.createContext(req, res);
+		return this.handleRequest(ctx, fn);
+	}
+	return handleRequest;
+}
+
+handleRequest(ctx, middleware) {
+	const res = ctx.res;
+	res.status = 404;
+	const onerror = (err) => ctx.onerror(err);
+	const handleResponse = () => respond(ctx);
+	onFinished(res, onerror);
+	return middleware(ctx).then(handleResponse).catch(onerrir)
+}
+```
+
+```jsx
+function compose (middleware) {
+  // ...
+  return function (context, next) {
+    // last called middleware #
+    let index = -1
+    // 一开始的时候传入为 0，后续会递增
+    return dispatch(0)
+    function dispatch (i) {
+      // 假如没有递增，则说明执行了多次
+      if (i <= index) return Promise.reject(new Error('next() called multiple times'))
+      index = i
+      // 拿到当前的中间件
+      let fn = middleware[i]
+      if (i === middleware.length) fn = next
+      // 当 fn 为空的时候，就会开始执行 next() 后面部分的代码
+      if (!fn) return Promise.resolve()
+      try {
+        // 执行中间件，留意这两个参数，都是中间件的传参，第一个是上下文，第二个是 next 函数
+        // 也就是说执行 next 的时候也就是调用 dispatch 函数的时候
+        return Promise.resolve(fn(context, dispatch.bind(null, i + 1)));
+      } catch (err) {
+        return Promise.reject(err)
+      }
+    }
+  }
+}
+```
+
+## 洋葱模型的简易Demo
+
+```jsx
+const middleware = []
+let mw1 = async function (ctx, next) {
+    console.log("next前，第一个中间件")
+    await next()
+    console.log("next后，第一个中间件")
+}
+let mw2 = async function (ctx, next) {
+    console.log("next前，第二个中间件")
+    await next()
+    console.log("next后，第二个中间件")
+}
+let mw3 = async function (ctx, next) {
+    console.log("第三个中间件，没有next了")
+}
+
+function use(mw) {
+  middleware.push(mw);
+}
+
+function compose(middleware) {
+  return (ctx, next) => {
+    return dispatch(0);
+    function dispatch(i) {
+      const fn = middleware[i];
+      if (!fn) return;
+      return fn(ctx, dispatch.bind(null, i+1));
+    }
+  }
+}
+
+use(mw1);
+use(mw2);
+use(mw3);
+
+const fn = compose(middleware);
+
+fn();
+```
