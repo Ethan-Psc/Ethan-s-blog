@@ -17,6 +17,12 @@ const projectsData = [
     imgSrc: '',
     href: 'https://github.com/Ethan-Psc/Scratchdraw',
   },
+  {
+    title: 'home-Next',
+    description: `A SSR website with Next.js`,
+    imgSrc: '',
+    href: 'https://github.com/Ethan-Psc/home-Next',
+  },
 ]
 
 export default projectsData
