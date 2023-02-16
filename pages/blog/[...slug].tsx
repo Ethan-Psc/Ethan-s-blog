@@ -5,6 +5,7 @@ import { sortedBlogPost, coreContent } from 'pliny/utils/contentlayer'
 import { InferGetStaticPropsType } from 'next'
 import { allBlogs, allAuthors } from 'contentlayer/generated'
 import type { Blog } from 'contentlayer/generated'
+import { useEffect } from 'react';
 
 const DEFAULT_LAYOUT = 'PostLayout'
 
@@ -46,6 +47,9 @@ export default function BlogPostPage({
   prev,
   next,
 }: InferGetStaticPropsType<typeof getStaticProps>) {
+  useEffect(() => {
+    console.log(post)
+  })
   return (
     <>
       {'draft' in post && post.draft === true ? (

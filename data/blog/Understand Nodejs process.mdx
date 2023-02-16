@@ -1,0 +1,306 @@
+---
+title: '👨 深入理解Node.js并发、多进程、多线程'
+date: '2022-08-16'
+tags: ['Node','Javascript']
+draft: false
+summary: '并行是指两个或者多个事件在同一时刻发生；而并发是指两个或多个事件在同一时间间隔内'
+---
+
+# 深入理解Node.js并发、多进程、多线程
+
+## 并发
+
+概念：并行是指两个或者多个事件在**同一时刻**发生；而并发是指两个或多个事件在**同一时间间隔内**
+发生
+
+Node.js适合以I/O为主的应用，比如Web服务器中同时执行M个SQL，查询数据库、读取文件等操作，我们可以使用异步的方式，同时发起异步过程，来起到并发的效果
+
+I/O请求的限制在于下游，同时发送10个RPC请求与100个RPC请求对Node.js来说成本差别不大，都是“发送-等待”的节奏，但是下游处理请求的“供应商”是有限制的（多核CPU的数量）
+
+用于并发限制的npm包pLimit和asyncPool
+
+### **asyncPool**
+
+**使用**
+
+```less
+function asyncPool(poolLimit, array, iteratorFn){}
+// poolLimit表示限制并发的数量
+// array表示iteratorFn的参数列表
+// iteratorFn表示返回值为Promise对象的函数
+const print = (time) => new Promise(setTimeout(() => {console.log(time);resolve(time)}, time));
+await asyncPool(2, [1,5,2,3], print);
+// print(1),print(5)函数入ret异步任务队列
+// 1s后打印1
+// print(1)出队，print(2)入队
+// 3s后打印2
+// print(2)出队，print(3)入队
+// 5s后打印5，6s后打印3
+```
+
+**实现原理**
+
+```less
+// 维护两个数组 ret保存所有异步函数 executing保存所有正在执行的异步函数
+// 利用async await 和 Promise.all Promise.race
+function asyncPool(poolLimit, array, iteratorFn) {
+	const ret = [];
+	const executing = [];
+	for (let num of array) {
+		// 创建异步任务
+		const fn = Promise.resolve().then(() => iteratorFn(num));
+		// ret保存所有的异步任务
+		ret.push(fn);
+		// 需要并发限制
+		if (poolLimit < array.length) {
+			// 执行异步任务，状态为resolved时将该异步任务移出executing队列
+			const p = fn.then(() => executing.splice(executing.indexOf(p), 1));
+			executing.push(p);
+			if (executing >= poolLimit){
+				// 看谁执行得快，执行得快的可以率先出executing队列，让下一个异步任务入队
+				await Promise.race(executing);
+			}
+		}
+	}
+	await Promise.all(ret);
+}
+```
+
+### **pLimit**
+
+**使用**
+
+```less
+// 并行跑h5,pc,bdbox,talos的case
+const limit = pLimit(4);
+const promiseArr = limit(() => runH5Task(tasksFile));
+
+function runH5Task(tasksFile) {
+	const pcLimit = pLimit(PC_PARALLEL_COUNT);
+	let promiseArr: Array<Promise<any>> = [];
+	for (const task of tasksFile) {
+       promiseArr.push(pcLimit(() => runTask('pc', task, RETRY_COUNT)));
+   }
+   return await Promise.all(promiseArr).then(res => {
+      // TODO 根据模板名进行聚合
+      return res;
+   });
+}
+```
+
+**实现原理(简易版)**
+
+```less
+export function pLimit(concurrency) {
+	const queue = []; // 完整版应该实现一个Queue数据结构
+	let activeCount = 0;
+	return function(fn) {
+		return new Promise((resolve, reject) => {
+			queue.push(fn().then().finally(() => {
+				activeCount--;
+				if (queue.length > 0) {
+					queue.shift()();
+				}
+			}))
+			if (activeCount < concurrency && queue.length > 0) {
+				queue.shift()();
+			}
+		})
+	}
+	})
+}
+// 三个属性值
+// activeCount 
+// clearQueue
+// penddingCount
+```
+
+## 多进程
+
+在百度搜索前端E2E项目中，采用exec创建子进程，通过pLimit实现限流并发，充分利用cpu资源。进程是资源分配与调度的最小单元。
+
+创建进程的两个模块：child_process，cluster
+
+### child_process
+
+- spawn
+- exec
+- execFile
+- fork
+
+```less
+// fork的demo
+// 基于可执行文件创建子进程
+// fork_compute.js
+function compute() {
+	
+}
+process.on('message', function() {})
+// fork_app.js
+```
+
+### cluster
+
+cluster 开启子进程Demo
+
+```tsx
+const http = require('http');
+const numCPUs = require('os').cpus().length;
+const cluster = require('cluster');
+if(cluster.isMaster){
+    console.log('Master proces id is',process.pid);
+    // fork workers
+    for(let i= 0;i<numCPUs;i++){
+        cluster.fork();
+    }
+    cluster.on('exit',function(worker,code,signal){
+        console.log('worker process died,id',worker.process.pid)
+    })
+}else{
+    // Worker可以共享同一个TCP连接
+    // 这里是一个http服务器
+    http.createServer(function(req,res){
+        res.writeHead(200);
+        res.end('hello word');
+    }).listen(8000);
+
+}
+```
+
+**cluster原理分析**
+
+[https://segmentfault.com/img/bVbwpah?w=501&h=261](https://segmentfault.com/img/bVbwpah?w=501&h=261)
+
+cluster模块调用fork方法来创建子进程，该方法与child_process中的fork是同一个方法。cluster模块采用的是经典的主从模型，Cluster会创建一个master，然后根据你指定的数量复制出多个子进程，可以使用`cluster.isMaster`属性判断当前进程是master还是worker(工作进程)。由master进程来管理所有的子进程，主进程不负责具体的任务处理，主要工作是负责调度和管理。
+
+cluster模块使用内置的负载均衡来更好地处理线程之间的压力，该负载均衡使用了`Round-robin`算法（也被称之为循环算法）。当使用Round-robin调度策略时，master accepts()所有传入的连接请求，然后将相应的TCP请求处理发送给选中的工作进程（该方式仍然通过IPC来进行通信）。
+
+开启多进程时候端口疑问讲解：如果多个Node进程监听同一个端口时会出现 `Error:listen EADDRIUNS`的错误，而cluster模块为什么可以让多个子进程监听同一个端口呢?原因是master进程内部启动了一个TCP服务器，而真正监听端口的只有这个服务器，当来自前端的请求触发服务器的connection事件后，master会将对应的socket具柄发送给子进程。
+
+**child_process 模块与cluster 模块总结**
+
+无论是 child_process 模块还是 cluster 模块，为了解决 Node.js 实例单线程运行，无法利用多核 CPU 的问题而出现的。核心就是**父进程（即 master 进程）负责监听端口，接收到新的请求后将其分发给下面的 worker 进程**。
+
+## 多线程
+
+如果想要共享内存，就需要多线程，Node.js 引入了 worker_threads 模块来完成多线程。
+
+### **监听端口**
+
+假设有一个 server.js 的文件。
+
+```fsharp
+const http = require('http');
+
+const runServer = port => {
+  const server = http.createServer((_req, res) => {
+    res.writeHead(200, { 'Content-Type': 'text/plain' });
+    const msg = `server on ${port}`;
+    console.log(msg);
+    res.end(msg);
+  });
+  server.listen(port);
+};
+
+module.exports.runServer = runServer;
+```
+
+### **Cluster 监听**
+
+通过 cluster 监听端口，可以如下。
+
+```fsharp
+const cluster = require('cluster');
+const { runServer } = require('./server');
+
+if (cluster.isMaster) {
+  console.log(`Master ${process.pid} is running`);
+  for (let i = 0; i < 4; i ++) {
+    cluster.fork();
+  }
+} else {
+  console.log(`worker${cluster.worker.id}: ${cluster.worker.process.pid}`);
+  runServer(3000);
+}
+```
+
+**类似的 Worker Threads 代码**
+
+```fsharp
+const { Worker, isMainThread } = require('worker_threads');
+const { runServer } = require('./server');
+
+console.log('isMainThread', isMainThread);
+
+if (isMainThread) {
+  for (let i = 0; i < 3; i ++) {
+    new Worker(__filename);
+  }
+} else {
+  runServer(4000);
+}
+```
+
+结果如下。
+
+![https://ask.qcloudimg.com/http-save/yehe-7131229/t19h8gm8tb.png?imageView2/2/w/1620](https://ask.qcloudimg.com/http-save/yehe-7131229/t19h8gm8tb.png?imageView2/2/w/1620)
+
+我们没办法在一个进程中监听多个端口，具体可以查看 Node.: 中 net.js 和 cluster.js 做了什么。
+
+那么 Worker Threads 优势在哪？
+
+### **通信**
+
+Worker Threads 更擅长通信，这是线程的优势，不仅是可以消息通信，还可以共享内存。
+
+**子线程管理**
+
+子线程通过 Worker 实例管理，而下面介绍实例化中的几个重要参数。
+
+**资源限制 resouceLimits**
+
+- maxOldGenerationSizeMb：子线程中栈的最大内存
+- maxYoungGenerationSizeMb：子线程中创建对象的堆的最大内存
+- codeRangeSizeMb：生成代码消耗的内存
+- stackSizeMb：该线程默认堆的大小
+
+**子线程输出 stdout/stderr/stdin**
+
+如果这 stdout/stderr/stdin 设置为 true，子线程会有独立的管道输出，而不会把 out/err/in 合并到父进程。
+
+**子线程参数 workerData, argv 和 execArgv**
+
+- workerData: 父线程传递给子线程的数据，必须要通过 require('worker_threads').workerData 获取。
+- argv: 父线程传递给子线程的参数，子线程通过 process.argv 获取。
+- execArgv: Node 的执行参数。
+
+**子线程环境 env 和 SHARE_ENV**
+
+- env: 父线程传递给子线程的环境，通过 process.env 可以获取。
+- SHARE_ENV：指定父线程和子线程可以共享环境变量
+
+## 进程与线程
+
+**进程是资源分配与调度的最小单元**，是对正在运行的程序的一个抽象
+
+操作系统的一切都是围绕进程进行的，负责执行这些任务的是cpu
+
+进程是抽象的概念，从三个层面程序、数据集合、进程控制块组成进程的定义：
+
+- 程序：用于描述进程将要完成的任务，是控制进程执行的指令集
+- 数据集合：是程序执行所需要的数据
+- 进程控制块：是进程的描述信息和控制信息，是进程存在的唯一标识
+
+**线程是任务分配与调度(运算调度)的最小单元**，是当前进程的一个执行任务，负责当前进程程序的运行
+
+一个进程可以有多个线程，一个进程中的多个线程共享同一块内存，同时共享对象资源，如果线程间发生冲突，可以进行通信以解决冲突
+
+多线程是并行而不是并发的，多线程编程无法发挥多cpu的运行能力，因为一个进程只能局限在一个cpu中。多线程并行宏观看是并行的，微观上看是在分时切片（时间片）串行的
+
+**区别**
+
+- 本质：进程是资源分配与调度的最小单元，线程是任务分配与调度的最小单元
+- 切换开销：每个进程都有独立的**代码和数据空间**（程序上下文），因此进程的切换开销较大；线程之间共享代码和数据空间，拥有独立的运行栈和程序计数器，是轻量级的进程，所以线程之间的切换开销小
+- 环境：操作系统中运行多个程序（进程）；进程中运行多个线程，线程之间是分时切片串行的
+- 内存环境：操作系统为每一个进程分配代码与数据空间，分配不同的内存空间；线程之间共享内存空间，线程的内存空间由进程分配而来
+- 包含关系：线程是进程的一部分，因此也可以看作线程是轻量级的进程
